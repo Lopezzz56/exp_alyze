@@ -1,52 +1,277 @@
 'use client';
 
-import React, { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import React, { useState, useEffect, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useSupabaseAuth } from '@/hooks/useSupabaseAuth';
-import { Mail, Lock, Sparkles, TrendingUp, ShieldCheck, ArrowRight, Loader2, UserPlus } from 'lucide-react';
+import { Mail, Lock, Sparkles, TrendingUp, ShieldCheck, ArrowRight, Loader2, UserPlus, KeyRound, ArrowLeft, CheckCircle2 } from 'lucide-react';
 
-export default function LoginPage() {
+function LoginFormContent() {
   const router = useRouter();
-  const { loginWithPassword, registerWithPassword } = useSupabaseAuth();
+  const searchParams = useSearchParams();
+  const { loginWithPassword, registerWithPassword, resetPassword, updatePassword, isRecovery } = useSupabaseAuth();
   
-  const [isRegister, setIsRegister] = useState(false);
+  type AuthMode = 'login' | 'register' | 'forgot' | 'reset';
+  const [mode, setMode] = useState<AuthMode>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (isRecovery || searchParams?.get('mode') === 'reset') {
+      setMode('reset');
+    }
+  }, [isRecovery, searchParams]);
+
   const handleAuthAction = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email || !password) {
-      setErrorMessage('Please enter both email and password.');
-      return;
-    }
-
-    setLoading(true);
     setErrorMessage(null);
     setSuccessMessage(null);
+    setLoading(true);
 
     try {
-      if (isRegister) {
+      if (mode === 'forgot') {
+        if (!email) {
+          setErrorMessage('Please enter your email address.');
+          setLoading(false);
+          return;
+        }
+        await resetPassword(email);
+        setSuccessMessage('Password reset link sent! Please check your email inbox.');
+      } else if (mode === 'reset') {
+        if (!password) {
+          setErrorMessage('Please enter a new password.');
+          setLoading(false);
+          return;
+        }
+        if (password !== confirmPassword) {
+          setErrorMessage('Passwords do not match.');
+          setLoading(false);
+          return;
+        }
+        await updatePassword(password);
+        setSuccessMessage('Your password has been reset successfully! Redirecting to dashboard...');
+        setTimeout(() => {
+          router.push('/dashboard');
+        }, 1500);
+      } else if (mode === 'register') {
+        if (!email || !password) {
+          setErrorMessage('Please enter both email and password.');
+          setLoading(false);
+          return;
+        }
         await registerWithPassword(email, password);
-        setSuccessMessage('🎉 Account registered successfully! Redirecting you to the dashboard...');
-        
-        // Supabase signs users in immediately after signup if email verification is off
+        setSuccessMessage('Account registered successfully! Redirecting you to the dashboard...');
         setTimeout(() => {
           router.push('/dashboard');
         }, 1500);
       } else {
+        if (!email || !password) {
+          setErrorMessage('Please enter both email and password.');
+          setLoading(false);
+          return;
+        }
         await loginWithPassword(email, password);
         router.push('/dashboard');
       }
     } catch (err: any) {
-      setErrorMessage(err.message || 'Authentication failed. Please verify your credentials.');
+      setErrorMessage(err.message || 'Authentication failed. Please verify your details.');
     } finally {
       setLoading(false);
     }
   };
 
+  const getHeading = () => {
+    switch (mode) {
+      case 'register':
+        return 'Register Account';
+      case 'forgot':
+        return 'Reset Password';
+      case 'reset':
+        return 'Set New Password';
+      default:
+        return 'Welcome back';
+    }
+  };
+
+  const getSubheading = () => {
+    switch (mode) {
+      case 'register':
+        return 'Create your credentials to get started.';
+      case 'forgot':
+        return 'Enter your email address and we will send you a reset link.';
+      case 'reset':
+        return 'Enter a new password for your account.';
+      default:
+        return 'Access your executive commission portal.';
+    }
+  };
+
+  return (
+    <div className="mx-auto w-full max-w-sm">
+      <div className="lg:hidden flex items-center gap-2 mb-8 justify-center">
+        <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center shadow-sm">
+          <Sparkles className="w-4.5 h-4.5 text-white" />
+        </div>
+        <span className="text-lg font-bold tracking-tight text-slate-900">ExpAlyze</span>
+      </div>
+
+      <div className="text-center lg:text-left">
+        <h2 className="text-2xl font-bold tracking-tight text-slate-900">
+          {getHeading()}
+        </h2>
+        <p className="mt-1 text-slate-500 text-sm">
+          {getSubheading()}
+        </p>
+      </div>
+
+      <form onSubmit={handleAuthAction} className="mt-8 space-y-5">
+        {errorMessage && (
+          <div className="p-4 rounded-xl text-sm border bg-rose-50/50 text-rose-800 border-rose-100 flex items-start gap-2">
+            <div className="flex-1">{errorMessage}</div>
+          </div>
+        )}
+        
+        {successMessage && (
+          <div className="p-4 rounded-xl text-sm border bg-emerald-50/50 text-emerald-800 border-emerald-100 flex items-start gap-2">
+            <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+            <div className="flex-1">{successMessage}</div>
+          </div>
+        )}
+
+        {mode !== 'reset' && (
+          <div>
+            <label htmlFor="email" className="block text-sm font-semibold text-slate-700">
+              Email Address
+            </label>
+            <div className="relative mt-1">
+              <input
+                id="email"
+                type="email"
+                placeholder="name@company.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full pl-10 pr-4 py-2.5 bg-slate-50/50 focus:bg-white text-slate-900 placeholder-slate-400 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition-all text-sm"
+                required
+              />
+              <Mail className="absolute left-3.5 top-3.5 w-4 h-4 text-slate-400" />
+            </div>
+          </div>
+        )}
+
+        {mode !== 'forgot' && (
+          <div>
+            <div className="flex justify-between items-center">
+              <label htmlFor="password" className="block text-sm font-semibold text-slate-700">
+                {mode === 'reset' ? 'New Password' : 'Password'}
+              </label>
+              {mode === 'login' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMode('forgot');
+                    setErrorMessage(null);
+                    setSuccessMessage(null);
+                  }}
+                  className="text-xs text-blue-600 hover:text-blue-500 font-semibold cursor-pointer"
+                >
+                  Forgot password?
+                </button>
+              )}
+            </div>
+            <div className="relative mt-1">
+              <input
+                id="password"
+                type="password"
+                placeholder="••••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full pl-10 pr-4 py-2.5 bg-slate-50/50 focus:bg-white text-slate-900 placeholder-slate-400 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition-all text-sm"
+                required
+              />
+              <Lock className="absolute left-3.5 top-3.5 w-4 h-4 text-slate-400" />
+            </div>
+          </div>
+        )}
+
+        {mode === 'reset' && (
+          <div>
+            <label htmlFor="confirmPassword" className="block text-sm font-semibold text-slate-700">
+              Confirm New Password
+            </label>
+            <div className="relative mt-1">
+              <input
+                id="confirmPassword"
+                type="password"
+                placeholder="••••••••"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                className="w-full pl-10 pr-4 py-2.5 bg-slate-50/50 focus:bg-white text-slate-900 placeholder-slate-400 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition-all text-sm"
+                required
+              />
+              <Lock className="absolute left-3.5 top-3.5 w-4 h-4 text-slate-400" />
+            </div>
+          </div>
+        )}
+
+        <button
+          type="submit"
+          disabled={loading}
+          className="w-full flex items-center justify-center gap-2 py-2.5 px-4 text-sm font-semibold text-white bg-slate-900 hover:bg-slate-800 disabled:bg-slate-300 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-slate-900/10 cursor-pointer transition-all active:scale-[0.98]"
+        >
+          {loading ? (
+            <Loader2 className="w-4.5 h-4.5 animate-spin" />
+          ) : (
+            <>
+              {mode === 'forgot' && 'Send Reset Link'}
+              {mode === 'reset' && 'Update Password'}
+              {mode === 'register' && 'Register Account'}
+              {mode === 'login' && 'Sign In'}
+
+              {mode === 'forgot' && <KeyRound className="w-4 h-4" />}
+              {mode === 'reset' && <CheckCircle2 className="w-4 h-4" />}
+              {mode === 'register' && <UserPlus className="w-4 h-4" />}
+              {mode === 'login' && <ArrowRight className="w-4 h-4" />}
+            </>
+          )}
+        </button>
+      </form>
+
+      <div className="mt-6 flex flex-col items-center gap-3">
+        {mode === 'forgot' || mode === 'reset' ? (
+          <button
+            onClick={() => {
+              setMode('login');
+              setErrorMessage(null);
+              setSuccessMessage(null);
+            }}
+            type="button"
+            className="text-xs text-slate-600 hover:text-slate-900 font-semibold flex items-center gap-1 cursor-pointer"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            Back to Sign In
+          </button>
+        ) : (
+          <button
+            onClick={() => {
+              setMode(mode === 'register' ? 'login' : 'register');
+              setErrorMessage(null);
+              setSuccessMessage(null);
+            }}
+            type="button"
+            className="text-xs text-blue-600 hover:text-blue-500 font-semibold transition-all hover:underline cursor-pointer"
+          >
+            {mode === 'register' ? 'Already have an account? Sign In' : 'Register new account'}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export default function LoginPage() {
   return (
     <main className="min-h-screen grid grid-cols-1 lg:grid-cols-12 overflow-hidden bg-slate-50/30">
       {/* Left Panel: Hero & Preview */}
@@ -110,104 +335,9 @@ export default function LoginPage() {
 
       {/* Right Panel: Auth Form */}
       <div className="flex col-span-1 lg:col-span-5 flex-col justify-center px-6 py-12 md:px-12 lg:px-16 bg-white">
-        <div className="mx-auto w-full max-w-sm">
-          
-          <div className="lg:hidden flex items-center gap-2 mb-8 justify-center">
-            <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center shadow-sm">
-              <Sparkles className="w-4.5 h-4.5 text-white" />
-            </div>
-            <span className="text-lg font-bold tracking-tight text-slate-900">ExpAlyze</span>
-          </div>
-
-          <div className="text-center lg:text-left">
-            <h2 className="text-2xl font-bold tracking-tight text-slate-900">
-              {isRegister ? 'Register Account' : 'Welcome back'}
-            </h2>
-            <p className="mt-1 text-slate-500 text-sm">
-              {isRegister ? 'Create your credentials to get started.' : 'Access your executive commission portal.'}
-            </p>
-          </div>
-
-          <form onSubmit={handleAuthAction} className="mt-8 space-y-5">
-            {errorMessage && (
-              <div className="p-4 rounded-xl text-sm border bg-rose-50/50 text-rose-800 border-rose-100">
-                {errorMessage}
-              </div>
-            )}
-            
-            {successMessage && (
-              <div className="p-4 rounded-xl text-sm border bg-emerald-50/50 text-emerald-800 border-emerald-100">
-                {successMessage}
-              </div>
-            )}
-
-            <div>
-              <label htmlFor="email" className="block text-sm font-semibold text-slate-700">
-                Email Address
-              </label>
-              <div className="relative mt-1">
-                <input
-                  id="email"
-                  type="email"
-                  placeholder="name@company.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2.5 bg-slate-50/50 focus:bg-white text-slate-900 placeholder-slate-400 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition-all text-sm"
-                  required
-                />
-                <Mail className="absolute left-3.5 top-3.5 w-4 h-4 text-slate-400" />
-              </div>
-            </div>
-
-            <div>
-              <label htmlFor="password" className="block text-sm font-semibold text-slate-700">
-                Password
-              </label>
-              <div className="relative mt-1">
-                <input
-                  id="password"
-                  type="password"
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2.5 bg-slate-50/50 focus:bg-white text-slate-900 placeholder-slate-400 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition-all text-sm"
-                  required
-                />
-                <Lock className="absolute left-3.5 top-3.5 w-4 h-4 text-slate-400" />
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full flex items-center justify-center gap-2 py-2.5 px-4 text-sm font-semibold text-white bg-slate-900 hover:bg-slate-800 disabled:bg-slate-300 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-slate-900/10 cursor-pointer transition-all active:scale-[0.98]"
-            >
-              {loading ? (
-                <Loader2 className="w-4.5 h-4.5 animate-spin" />
-              ) : (
-                <>
-                  {isRegister ? 'Register Account' : 'Sign In'}
-                  {isRegister ? <UserPlus className="w-4 h-4" /> : <ArrowRight className="w-4 h-4" />}
-                </>
-              )}
-            </button>
-          </form>
-
-          <div className="mt-6 flex flex-col items-center gap-3">
-            <button
-              onClick={() => {
-                setIsRegister(!isRegister);
-                setErrorMessage(null);
-                setSuccessMessage(null);
-              }}
-              type="button"
-              className="text-xs text-blue-600 hover:text-blue-500 font-semibold transition-all hover:underline cursor-pointer"
-            >
-              {isRegister ? 'Already have an account? Sign In' : 'Register new account'}
-            </button>
-          </div>
-
-        </div>
+        <Suspense fallback={<div className="flex items-center justify-center p-8"><Loader2 className="w-6 h-6 animate-spin text-blue-600" /></div>}>
+          <LoginFormContent />
+        </Suspense>
       </div>
     </main>
   );

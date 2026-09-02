@@ -6,6 +6,7 @@ export function useSupabaseAuth() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isRecovery, setIsRecovery] = useState(false);
 
   useEffect(() => {
     // Check active session
@@ -26,8 +27,11 @@ export function useSupabaseAuth() {
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
+      (event, session) => {
         setUser(session?.user ?? null);
+        if (event === 'PASSWORD_RECOVERY') {
+          setIsRecovery(true);
+        }
         setLoading(false);
       }
     );
@@ -75,6 +79,41 @@ export function useSupabaseAuth() {
     }
   };
 
+  const resetPassword = async (email: string) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const { data, error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${typeof window !== 'undefined' ? window.location.origin : ''}/login?mode=reset`,
+      });
+      if (resetError) throw resetError;
+      return data;
+    } catch (err: any) {
+      setError(err.message || 'Failed to send password reset email.');
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const updatePassword = async (newPassword: string) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const { data, error: updateError } = await supabase.auth.updateUser({
+        password: newPassword,
+      });
+      if (updateError) throw updateError;
+      setIsRecovery(false);
+      return data;
+    } catch (err: any) {
+      setError(err.message || 'Failed to update password.');
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const logout = async () => {
     setLoading(true);
     setError(null);
@@ -112,9 +151,12 @@ export function useSupabaseAuth() {
     user,
     loading,
     error,
+    isRecovery,
     loginWithPassword,
     loginWithMagicLink,
     registerWithPassword,
+    resetPassword,
+    updatePassword,
     logout,
   };
 }
